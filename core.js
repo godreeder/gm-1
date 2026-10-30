@@ -52,6 +52,12 @@ export function configure(data) { DATA=data; }
 export function romanceId(a,b) { const i=PAIRS.findIndex(p=>p.includes(a)&&p.includes(b)); return i<0?null:`R${String(i+1).padStart(2,'0')}`; }
 export function canRomance(a,b) { return Boolean(a!==b && romanceId(a,b)); }
 export function displayName(id, chapter=7) { return id==='vera'&&chapter<5?'Валерка':CHARACTERS[id]?.name||id; }
+// Идентификаторы вводных и иллюстраций не обязаны начинаться с номера главы.
+export function chapterForNode(s,id=s.node){
+ const node=buildFlow(s).find(n=>n.id===id);
+ if(node)return node.chapter;
+ return Number(String(id).match(/(?:chapter-|(?:^|\.))([1-7])(?:[.-]|$)/)?.[1])||7;
+}
 export function newState(hero) {
   if(!HEROES.includes(hero)) throw Error('Неизвестный герой');
   return {v:VERSION,hero,node:'chapter-1',line:0,flags:{},rel:Object.fromEntries(Object.keys(CHARACTERS).map(x=>[x,HEROES.includes(x)?2:0])),clues:[],partner:null,interest:null,friend:HEROES.find(x=>x!==hero),visited:[],history:[],updatedAt:Date.now(),complete:false};

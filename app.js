@@ -1,4 +1,5 @@
-import {configure, HEROES, CHARACTERS, CHAPTERS, CLUES, newState, validateState, buildFlow, enterNode, commitChoice, resolveSpeaker, displayName, happyRequirements} from './core.js';
+import { endingIllustration } from './pacing.js';
+import {configure, chapterForNode, HEROES, CHARACTERS, CHAPTERS, CLUES, newState, validateState, buildFlow, enterNode, commitChoice, resolveSpeaker, displayName, happyRequirements} from './core.js';
 
 const $=s=>document.querySelector(s);
 const app=$('#app'),modal=$('#modal');
@@ -55,7 +56,7 @@ function showMenu(){
   <div class="menu-foot">7 ГЛАВ &nbsp; · &nbsp; 4 ГЕРОЯ &nbsp; · &nbsp; 5 ФИНАЛОВ<span>${cloudReady?'Прогресс связан с Telegram':'Прогресс сохраняется на устройстве'}</span></div>
   </div></section>`;
 }
-function chapterOf(id){return Number(String(id).match(/(?:chapter-|^)([1-7])/)?.[1])||7;}
+function chapterOf(id,saved=state){return saved&&DATA?chapterForNode(saved,id):Number(String(id).match(/(?:chapter-|(?:^|\.))([1-7])(?:[.-]|$)/)?.[1])||7;}
 function showHeroes(){
   stopTimers();view='heroes';telegram?.BackButton?.show();
   app.innerHTML=`<section class="screen hero-screen"><header class="page-header">${icon('back','menu','Вернуться')}<div><span class="eyebrow">ТВОЯ ТОЧКА ЗРЕНИЯ</span><h2>Выбери героя</h2></div></header><div class="hero-body"><p class="hero-intro">Они попадут в одну историю.<br>Но у каждого — своя правда и свои причины молчать.</p><div class="hero-grid">${HEROES.map(id=>`<button class="hero-card ${selectedHero===id?'selected':''}" data-action="hero" data-id="${id}" aria-pressed="${selectedHero===id}"><img src="${imageUrl(id)}" alt="${esc(CHARACTERS[id].name)}" loading="${id===selectedHero?'eager':'lazy'}"><span class="card-caption"><strong>${esc(CHARACTERS[id].name)}</strong><small>${esc(CHARACTERS[id].power)}</small></span></button>`).join('')}</div><p class="hero-description">${esc(CHARACTERS[selectedHero].description)}</p><p class="hero-note">${selectedHero==='maks'?'Романтические ветки Макса — только с девушками.':'Можно выбирать романтические отношения или дружбу.'}</p><button class="primary" data-action="start">Начать за ${esc({kolya:'Колю',maks:'Макса',vanya:'Ваню',yarik:'Ярика'}[selectedHero])} <span>→</span></button></div></section>`;
@@ -88,7 +89,8 @@ function renderCurrent(){
   save();
   if(node.kind==='finish'){finish();return;}
   const token=++renderToken;
-  setBackground(node.art||node.bg,node.kind==='cg');
+  setBackground(node.illustration||node.art||node.bg,Boolean(node.illustration)||node.kind==='cg');
+  if(node.illustration&&!meta.cg.includes(node.illustration)){meta.cg.push(node.illustration);saveMeta();}
   $('#chapter-num').textContent=`ГЛАВА ${node.chapter} ИЗ 7`;
   $('#chapter-name').textContent=CHAPTERS[node.chapter][0];
   const inChapter=flow.filter(n=>n.chapter===node.chapter),pos=inChapter.findIndex(n=>n.id===node.id);
@@ -112,9 +114,9 @@ function renderCurrent(){
   if(!node.frames.length){nextNode();return;}
   state.line=Math.min(state.line,node.frames.length-1);
   const item=node.frames[state.line];const speaker=resolveSpeaker(item.speaker,state,node.chapter);
-  if(node.introduction){$('#characters').innerHTML='';stageIds=[];sceneId='';}else stageCharacters(speaker.id,/по связи|сообщение|запись/.test(speaker.aside));
+  if(node.introduction||node.illustration){$('#characters').innerHTML='';stageIds=[];sceneId='';}else stageCharacters(speaker.id,/по связи|сообщение|запись/.test(speaker.aside));
   $('#speaker-row').style.visibility=speaker.name?'visible':'hidden';
-  $('#speaker-name').textContent=speaker.name;$('#speaker-aside').textContent=speaker.aside|| (speaker.id&&!stageIds.includes(speaker.id)&&!node.introduction?'в общем разговоре':'');
+  $('#speaker-name').textContent=speaker.name;$('#speaker-aside').textContent=speaker.aside|| (speaker.id&&!stageIds.includes(speaker.id)&&!node.introduction&&!node.illustration?'в общем разговоре':'');
   $('#speaker-row').style.setProperty('--speaker-color',CHARACTERS[speaker.id]?.color||'#d7bc91');
   const text=$('#dialogue-text');text.classList.toggle('narration',!item.speaker);text.textContent='';fullText=item.text;
   $('#choices').innerHTML='';$('#speech-panel').classList.remove('has-choices');
@@ -123,7 +125,7 @@ function renderCurrent(){
   if(state._lastLine!==signature){state._lastLine=signature;state.history.push({name:speaker.name||'История',text:item.text});state.history=state.history.slice(-80);}
   if(!settings.speed||window.matchMedia('(prefers-reduced-motion: reduce)').matches){text.textContent=fullText;finishTyping();}
   else {let i=0;typing=true;typeTimer=setInterval(()=>{if(token!==renderToken){clearInterval(typeTimer);return;}i+=2;text.textContent=fullText.slice(0,i);if(i>=fullText.length)finishTyping();},settings.speed);}
-  const next=flow[flow.findIndex(n=>n.id===node.id)+1];if(next)preload(next.art||next.bg);
+  const next=flow[flow.findIndex(n=>n.id===node.id)+1];if(next)preload(next.illustration||next.art||next.bg);
 }
 function stageCharacters(active,remote=false){
   if(sceneId!==(node.sceneKey||node.id)){sceneId=node.sceneKey||node.id;stageIds=[];}
@@ -176,7 +178,7 @@ function finish(){
   if(!meta.endings.includes(node.ending)){meta.endings.push(node.ending);saveMeta();}
   const arts={E1:'24-запечатанная-стена',E2:'22-квартира-эпилог',E3:'25-пульт-гм',E4:'23-мемориал',E5:'21-кафе'};
   const desc={E1:'Город будет жить. Кто-то остался по ту сторону.',E2:'Вы вместе. Но каждое утро немного похоже на вчера.',E3:'Город спасён. Только вспомнить, ради кого, становится всё труднее.',E4:'Некоторые успели выйти. Сообщения от остальных продолжают приходить.',E5:'Сил больше нет. Впервые за всю историю никто не должен уходить.'};
-  app.innerHTML=`<section class="screen scenic" style="background-image:url('${imageUrl(arts[node.ending])}')"><div class="screen-content finish"><span class="ending-mark">${node.ending==='E5'?'✧':'◇'}</span><span class="eyebrow">КОНЕЦ ИСТОРИИ · ${meta.endings.length} ИЗ 5 ФИНАЛОВ</span><h1>${esc(node.title)}</h1><p>${esc(desc[node.ending])}</p><button class="primary" data-action="menu">В главное меню</button><button class="secondary" data-action="gallery">Открыть коллекцию</button></div></section>`;
+  app.innerHTML=`<section class="screen scenic" style="background-image:url('${imageUrl(endingIllustration(state)||arts[node.ending])}')"><div class="screen-content finish"><span class="ending-mark">${node.ending==='E5'?'✧':'◇'}</span><span class="eyebrow">КОНЕЦ ИСТОРИИ · ${meta.endings.length} ИЗ 5 ФИНАЛОВ</span><h1>${esc(node.title)}</h1><p>${esc(desc[node.ending])}</p><button class="primary" data-action="menu">В главное меню</button><button class="secondary" data-action="gallery">Открыть коллекцию</button></div></section>`;
 }
 function pause(){
   openModal('На паузе',`<p>${esc(displayName(state.hero))} · Глава ${node.chapter}<br>${esc(CHAPTERS[node.chapter][0])}</p><div class="menu-actions"><button class="primary" data-action="close">Продолжить</button><button class="secondary" data-action="saves">Сохранить или загрузить</button><button class="secondary" data-action="notebook">Досье и отношения</button><button class="secondary" data-action="settings">Настройки</button><button class="text-button" data-action="leave">Главное меню</button></div>`);
@@ -199,13 +201,13 @@ function showSettings(){
 }
 function gallery(){
   const cards=Object.values(DATA.assets).filter(a=>a.kind==='cg');
-  openModal('Коллекция',`<span class="eyebrow">МГНОВЕНИЯ · ${meta.cg.length} ИЗ 7</span><p>Иллюстрации открываются по ходу истории. Романтические кадры — только в соответствующих отношениях.</p><div class="gallery-grid">${cards.map(a=>{const id=Object.keys(DATA.assets).find(k=>DATA.assets[k]===a),open=meta.cg.includes(id);return `<button class="gallery-card" ${open?`data-action="art" data-id="${id}"`:'disabled'}>${open?`<img src="${encodeURI(a.url)}" loading="lazy" alt="${esc(a.title)}">`:'<div class="locked-art">◇</div>'}<span>${open?esc(a.title):'Ещё не случилось'}</span></button>`;}).join('')}</div><div class="divider"></div><span class="eyebrow">ФИНАЛЫ · ${meta.endings.length} ИЗ 5</span>${['E1','E2','E3','E4','E5'].map((id,i)=>`<div class="ending-list"><span>${meta.endings.includes(id)?'✧':'◇'}</span><div>${meta.endings.includes(id)?esc(DATA.sections[id].title):`Неизвестный финал ${i+1}`}<small>${meta.endings.includes(id)?'Эта история уже была твоей':'Откроется после прохождения'}</small></div></div>`).join('')}`);
+  openModal('Коллекция',`<span class="eyebrow">МГНОВЕНИЯ · ${meta.cg.filter(id=>DATA.assets[id]?.kind==='cg').length} ИЗ ${cards.length}</span><p>Иллюстрации открываются по ходу истории. Романтические кадры — только в соответствующих отношениях.</p><div class="gallery-grid">${cards.map(a=>{const id=Object.keys(DATA.assets).find(k=>DATA.assets[k]===a),open=meta.cg.includes(id);return `<button class="gallery-card" ${open?`data-action="art" data-id="${id}"`:'disabled'}>${open?`<img src="${encodeURI(a.url)}" loading="lazy" alt="${esc(a.title)}">`:'<div class="locked-art">◇</div>'}<span>${open?esc(a.title):'Ещё не случилось'}</span></button>`;}).join('')}</div><div class="divider"></div><span class="eyebrow">ФИНАЛЫ · ${meta.endings.length} ИЗ 5</span>${['E1','E2','E3','E4','E5'].map((id,i)=>`<div class="ending-list"><span>${meta.endings.includes(id)?'✧':'◇'}</span><div>${meta.endings.includes(id)?esc(DATA.sections[id].title):`Неизвестный финал ${i+1}`}<small>${meta.endings.includes(id)?'Эта история уже была твоей':'Откроется после прохождения'}</small></div></div>`).join('')}`);
 }
 function saves(){
-  openModal('Сохранения',`<p>Автосохранение обновляется после каждой реплики. Эти три слота можно оставить перед важным решением.</p>${[1,2,3].map(i=>{const slot=validateState(readStorage(`gm.slot.${i}`));return `<article class="save-slot"><h3>Слот ${i}${slot?` · ${esc(displayName(slot.hero))}`:''}</h3><p>${slot?`Глава ${chapterOf(slot.node)} · ${new Date(slot.updatedAt).toLocaleString('ru-RU')}`:'Пока пусто'}</p><div class="slot-actions"><button data-action="save-slot" data-id="${i}" ${!state?'disabled':''}>Сохранить</button><button data-action="load-slot" data-id="${i}" ${!slot?'disabled':''}>Загрузить</button></div></article>`;}).join('')}<div class="file-actions"><button class="secondary" data-action="export" ${!state?'disabled':''}>Экспорт файла</button><button class="secondary" data-action="import">Импорт файла</button><input id="import-file" type="file" accept="application/json,.json"></div><p class="codex-note">Ручные слоты хранятся на этом устройстве. Файл сохранения можно перенести. В Telegram доступно облачное автосохранение, если его поддерживает клиент.</p>`);
+  openModal('Сохранения',`<p>Автосохранение обновляется после каждой реплики. Эти три слота можно оставить перед важным решением.</p>${[1,2,3].map(i=>{const slot=validateState(readStorage(`gm.slot.${i}`));return `<article class="save-slot"><h3>Слот ${i}${slot?` · ${esc(displayName(slot.hero))}`:''}</h3><p>${slot?`Глава ${chapterOf(slot.node,slot)} · ${new Date(slot.updatedAt).toLocaleString('ru-RU')}`:'Пока пусто'}</p><div class="slot-actions"><button data-action="save-slot" data-id="${i}" ${!state?'disabled':''}>Сохранить</button><button data-action="load-slot" data-id="${i}" ${!slot?'disabled':''}>Загрузить</button></div></article>`;}).join('')}<div class="file-actions"><button class="secondary" data-action="export" ${!state?'disabled':''}>Экспорт файла</button><button class="secondary" data-action="import">Импорт файла</button><input id="import-file" type="file" accept="application/json,.json"></div><p class="codex-note">Ручные слоты хранятся на этом устройстве. Файл сохранения можно перенести. В Telegram доступно облачное автосохранение, если его поддерживает клиент.</p>`);
 }
 function confirmLoad(slot){openModal('Вернуться к сохранению?',`<p>Текущий момент заменится сохранённым. Другие ручные слоты останутся.</p><div class="modal-actions"><button class="secondary" data-action="saves">Отмена</button><button class="primary" data-action="confirm-load" data-id="${slot}">Загрузить</button></div>`);}
-function about(){openModal('Об истории',`<span class="eyebrow">ГМ · ПЕРВЫЙ СЕЗОН</span><p>Четверо суперзлодеев находят пустое хранилище. Пропал ключ от места, откуда люди возвращаются другими. За одной тайной обнаруживается другая — и даже знакомое лицо не доказывает, что перед тобой тот же человек.</p><p>Выбери Колю, Макса, Ваню или Ярика. Доверяй, проверяй, заключай союзы. Романтика необязательна: дружба позволяет добраться до общего счастливого финала.</p><p>Настоящая Валерка сохраняет своё имя. Её копия после раскрытия выбирает имя Валерия. Максу доступны романтические ветки только с девушками.</p><p class="codex-note">Вымышленная история. Все персонажи совершеннолетние. Версия 0.2: семь глав, ключевые развилки и пять концовок. Основные спрайты и несколько особых состояний; полной лицевой анимации пока нет.</p>`);}
+function about(){openModal('Об истории',`<span class="eyebrow">ГМ · ПЕРВЫЙ СЕЗОН</span><p>Четверо суперзлодеев находят пустое хранилище. Пропал ключ от места, откуда люди возвращаются другими. За одной тайной обнаруживается другая — и даже знакомое лицо не доказывает, что перед тобой тот же человек.</p><p>Выбери Колю, Макса, Ваню или Ярика. Доверяй, проверяй, заключай союзы. Романтика необязательна: дружба позволяет добраться до общего счастливого финала.</p><p>Настоящая Валерка сохраняет своё имя. Её копия после раскрытия выбирает имя Валерия. Максу доступны романтические ветки только с девушками.</p><p class="codex-note">Вымышленная история. Все персонажи совершеннолетние. Версия 0.5.1: семь глав, ключевые развилки и пять концовок. Основные спрайты и несколько особых состояний; полной лицевой анимации пока нет.</p>`);}
 
 async function toggleAudio(){
   if(!settings.sound){if(audioMaster)audioMaster.gain.setTargetAtTime(0,audioContext.currentTime,.4);return;}

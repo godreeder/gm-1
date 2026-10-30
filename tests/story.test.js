@@ -24,6 +24,7 @@ function walk(hero,ending='E5',overrides={}){
   assert.equal(new Set(flow.map(x=>x.id)).size,flow.length,'Duplicate node IDs');
   if(n.bg)assert.ok(data.assets[n.bg],'Missing background '+n.bg);
   if(n.art)assert.ok(data.assets[n.art],'Missing CG '+n.art);
+  if(n.illustration)assert.ok(data.assets[n.illustration],'Missing illustration '+n.illustration);
   enterNode(s,n);
   if(n.kind==='finish'){assert.equal(n.ending,ending);return s;}
   const index=flow.indexOf(n),fallback=flow[index+1]?.id;
@@ -83,4 +84,72 @@ test('scene arrivals explain location and objective before dialogue, without cha
  assert.ok(!dialogue.some(x=>x.text.includes('ВЫБОР:')));
  s.node='1.02';s.line=3;const restored=validateState(s);
  assert.equal(buildFlow(restored).find(x=>x.id===restored.node).frames[3].speaker,'Ваня');
+});
+
+
+test('character illustrations follow actual choices and romance cast',()=>{
+ const s=newState('yarik');s.flags.yarikStayed=true;
+ assert.equal(buildFlow(s).find(n=>n.id==='4.departure').illustration,null);
+ s.flags.yarikStayed=false;assert.equal(buildFlow(s).find(n=>n.id==='4.departure').illustration,'10-ярик-уходит-с-ваней');
+ s.flags.ending='E3';s.friend='kolya';assert.equal(buildFlow(s).find(n=>n.id==='E3').illustration,null);
+ s.friend='vanya';assert.equal(buildFlow(s).find(n=>n.id==='E3').illustration,'14-финал-ярик-память');
+ const m=newState('maks');m.flags.ending='E2';m.partner='lida';assert.equal(buildFlow(m).find(n=>n.id==='E2').illustration,null);
+ m.partner='sasha';assert.equal(buildFlow(m).find(n=>n.id==='E2').illustration,'13-финал-макс-саша-петля');
+});
+
+
+test('all fifteen new artworks hold at least ten successive dialogue windows',async()=>{
+ const {EPISODES}=await import('../episode-art.js');assert.equal(EPISODES.length,15);
+ for(const spec of EPISODES){
+  const s=newState('kolya');Object.assign(s.flags,spec.flags||{});
+  const n=buildFlow(s).find(n=>n.id===spec.node);
+  assert.equal(n.illustration,spec.art);assert.ok(n.frames.length>=10,spec.title);
+  assert.ok(data.assets[spec.art]);assert.ok(fs.existsSync(new URL('../'+data.assets[spec.art].url,import.meta.url)));
+  for(let line=0;line<n.frames.length;line++){
+   s.node=n.id;s.line=line;
+   assert.equal(buildFlow(s).find(x=>x.id===s.node).illustration,spec.art,'Art changed within dialogue');
+  }
+ }
+});
+test('illustrated scenes retain their art across decisions and follow the chosen investigation',()=>{
+ const s=newState('kolya');let flow=buildFlow(s),n=flow.find(x=>x.id==='1.02.choice');
+ assert.equal(n.illustration,'16-четверо-за-картой');commitChoice(s,n,1);
+ assert.equal(buildFlow(s).find(x=>x.id==='1.02.reaction').illustration,n.illustration);
+ s.flags.investigate1='contracts';s.flags.investigate2='watches';flow=buildFlow(s);
+ assert.equal(flow.find(x=>x.id==='3.investigation-scene1').illustration,'23-архив-подписи');
+ assert.equal(flow.find(x=>x.id==='3.investigation-scene2').illustration,'24-квартира-валерки');
+ assert.equal(flow.find(x=>x.id==='4.twins').illustration,'26-две-валерки-встреча');
+ assert.equal(flow.find(x=>x.id==='5.accountability').illustration,'28-ваня-ярик-повтор');
+});
+
+
+test('the next fifteen illustrations support complete conversations for each protagonist',async()=>{
+ const {NEXT_EPISODES}=await import('../episode-art-2.js');assert.equal(NEXT_EPISODES.length,15);
+ for(const hero of ['kolya','maks','vanya','yarik'])for(const spec of NEXT_EPISODES){
+  const s=newState(hero);Object.assign(s.flags,spec.flags||{});
+  const n=buildFlow(s).find(x=>x.id===spec.node);
+  assert.equal(n.illustration,spec.art);assert.ok(n.frames.length>=9,spec.title);
+  assert.ok(fs.existsSync(new URL('../'+data.assets[spec.art].url,import.meta.url)));
+ }
+});
+test('private conversations and rival trials keep the correct artwork through their decisions',()=>{
+ const s=newState('maks');s.flags={private1:'sasha',private2:'vera'};
+ let flow=buildFlow(s);
+ assert.equal(flow.find(n=>n.id==='2.private-scene1').illustration,'36-саша-граница-иллюзии');
+ assert.equal(flow.find(n=>n.id==='2.private-scene2').illustration,'33-валерка-боится-памяти');
+ assert.ok(flow.find(n=>n.id==='2.private-scene1').frames.some(f=>f.text.includes('без чужого лица')));
+ const before=flow.find(n=>n.id==='6.03').illustration;commitChoice(s,flow.find(n=>n.id==='6.kolya'),0);flow=buildFlow(s);
+ assert.equal(flow.find(n=>n.id==='6.kolya-reaction').illustration,before);
+ assert.equal(flow.find(n=>n.id==='6.maks').illustration,'43-макс-выход-за-стеклом');
+});
+
+
+test('saved chapter numbers follow interludes and artwork rather than their ID prefix',async()=>{
+ const {chapterForNode}=await import('../core.js');
+ const s=newState('kolya');
+ for(const [id,chapter] of [['arrival.1.02',1],['bridge.2.01',2],['cg.07-коля-опоссум',3],['cg.01-ваня-ярик',4],['chapter-6',6],['6.05',6]]){
+  if(id==='cg.01-ваня-ярик'){s.partner='vanya';s.hero='yarik';s.flags.romance='yes';s.interest='vanya';}
+  s.node=id;assert.equal(chapterForNode(s),chapter,id);
+ }
+ const slot=newState('maks');slot.node='bridge.3.02';assert.equal(chapterForNode(slot),3);
 });
