@@ -15,7 +15,7 @@ function walk(hero,ending='E5',overrides={}){
   '4.fight':0,'4.romance':0,'4.touch':0,'4.twins':0,'4.yarik':0,
   '5.lida':0,'5.rescue':0,'5.relationship':0,'5.accountability':0,
   '6.invites':0,'6.kolya':0,'6.maks':0,'6.exit':0,'6.power-confirm':0,
-  '7.reveal':0,'7.confess':0,'7.reality':0,'7.ending':['E1','E2','E3','E4','E5'].indexOf(ending),'E5.seat':0,
+  '7.reveal':0,'7.confess':0,'7.reality':0,'7.ending':['E1','E2','E3','E4','E5'].indexOf(ending),'E5.seat':0,'E1.realm.decision':0,'E2.realm.decision':0,
   ...overrides,
  };
  for(;;){
@@ -93,8 +93,8 @@ test('character illustrations follow actual choices and romance cast',()=>{
  s.flags.yarikStayed=false;assert.equal(buildFlow(s).find(n=>n.id==='4.departure').illustration,'10-ярик-уходит-с-ваней');
  s.flags.ending='E3';s.friend='kolya';assert.equal(buildFlow(s).find(n=>n.id==='E3').illustration,null);
  s.friend='vanya';assert.equal(buildFlow(s).find(n=>n.id==='E3').illustration,'14-финал-ярик-память');
- const m=newState('maks');m.flags.ending='E2';m.partner='lida';assert.equal(buildFlow(m).find(n=>n.id==='E2').illustration,null);
- m.partner='sasha';assert.equal(buildFlow(m).find(n=>n.id==='E2').illustration,'13-финал-макс-саша-петля');
+ const m=newState('maks');m.flags.ending='E2';m.partner='lida';assert.equal(buildFlow(m).find(n=>n.id==='E2').illustration,'gm-realm-pair-maks-lida');
+ m.partner='sasha';assert.equal(buildFlow(m).find(n=>n.id==='E2').illustration,'gm-realm-pair-maks-sasha');
 });
 
 
@@ -152,4 +152,72 @@ test('saved chapter numbers follow interludes and artwork rather than their ID p
   s.node=id;assert.equal(chapterForNode(s),chapter,id);
  }
  const slot=newState('maks');slot.node='bridge.3.02';assert.equal(chapterForNode(slot),3);
+});
+
+test('GM lives cover four solo heroes and every permitted couple, with sixteen evil worlds',async()=>{
+ const {REALMS}=await import('../realms-data.js');
+ assert.equal(REALMS.length,27);assert.equal(REALMS.filter(w=>w.tone==='evil').length,16);
+ assert.equal(REALMS.filter(w=>w.cast.length===1).length,4);
+ assert.equal(new Set(REALMS.map(w=>w.art)).size,27);
+ assert.equal(new Set(REALMS.map(w=>w.visual)).size,27);
+ for(const hero of ['kolya','maks','vanya','yarik']){
+  for(const partner of ['kolya','maks','vanya','yarik','lida','polina','sasha','katya','vera']){
+   if(canRomance(hero,partner))assert.equal(REALMS.filter(w=>w.cast.length===2&&w.cast.includes(hero)&&w.cast.includes(partner)).length,1,hero+' '+partner);
+  }
+ }
+});
+
+test('each GM life has four readable stages and two persistent consequences',async()=>{
+ const {REALMS}=await import('../realms-data.js');
+ for(const w of REALMS){
+  for(const index of [0,1]){
+   const s=newState(w.cast[0]);s.partner=w.cast[1]||null;s.flags.ending=w.cast.length===1?'E1':'E2';
+   const prefix=s.flags.ending+'.realm';let flow=buildFlow(s);
+   const cards=flow.filter(n=>n.realmStage&&n.kind==='scene');assert.equal(cards.length,4,w.title);
+   for(const n of cards){assert.equal(n.place,w.place);assert.equal(n.illustration,w.art);assert.ok(n.goal);}
+   const c=flow.find(n=>n.id===prefix+'.decision');assert.equal(c.choices.length,2);commitChoice(s,c,index);
+   const restored=validateState(JSON.parse(JSON.stringify(s)));flow=buildFlow(restored);
+   const consequence=flow.find(n=>n.id===prefix+'.consequence');
+   assert.ok(consequence.frames.map(f=>f.text).join(' ').includes(w.outcomes[index]));
+   assert.equal(flow.at(-1).kind,'finish');assert.equal(flow.at(-1).title,w.title);
+   assert.ok(flow.filter(n=>n.realmStage).flatMap(n=>n.frames||[]).length>=20);
+   if(w.cast.length===2){
+    if(['kolya','maks','vanya','yarik'].includes(w.cast[1])){
+     const reverse=newState(w.cast[1]);
+     reverse.partner=w.cast[0];reverse.flags.ending='E2';
+     assert.equal(buildFlow(reverse).find(n=>n.id==='E2').illustration,w.art);
+    }
+   }
+  }
+ }
+});
+
+test('every registered GM ending artwork exists in the distributable',async()=>{
+ const {REALMS}=await import('../realms-data.js');
+ for(const w of REALMS){assert.ok(data.assets[w.art],w.art);assert.ok(fs.existsSync(new URL('../'+data.assets[w.art].url,import.meta.url)));}
+});
+
+test('the former apartment ending artwork is an explicit possible future for Maks and Sasha',()=>{
+ const s=newState('maks');assert.ok(!buildFlow(s).some(n=>n.id==='7.false-home'));
+ s.partner='sasha';const n=buildFlow(s).find(n=>n.id==='7.false-home');assert.equal(n.illustration,'13-финал-макс-саша-петля');assert.ok(n.frames[0].text.includes('ещё никогда не было'));assert.ok(n.frames.at(-1).text.includes('финалов пока не наступил'));
+});
+
+test('the seven early artworks now contain dialogue and respect confirmed romances',()=>{
+ const specs=[['vanya','yarik','01-ваня-ярик'],['kolya','lida','02-коля-лида'],['maks','sasha','03-макс-саша']];
+ for(const [hero,partner,art] of specs){
+  const s=newState(hero);s.interest=partner;
+  assert.ok(!buildFlow(s).some(n=>n.id==='cg.'+art));
+  s.partner=partner;s.flags.romance='yes';
+  const n=buildFlow(s).find(n=>n.id==='cg.'+art);assert.ok(n);assert.ok(n.frames.length>=8);assert.equal(n.illustration,art);assert.notEqual(n.kind,'cg');
+ }
+ const s=newState('kolya');for(const art of ['04-полина-катя','05-две-валерки','06-илья-будущий-ярик','07-коля-опоссум']){
+  const n=buildFlow(s).find(n=>n.id==='cg.'+art);assert.ok(n.frames.length>=8,art);assert.equal(n.illustration,art);assert.notEqual(n.kind,'cg');
+ }
+});
+
+test('the third artwork set follows narrative nodes and keeps actual branch text',async()=>{
+ const {MORE_EPISODES}=await import('../more-art.js');assert.equal(MORE_EPISODES.length,15);
+ const s=newState('kolya');s.flags.ending='E5';
+ for(const spec of MORE_EPISODES){const n=buildFlow(s).find(n=>n.id===spec.node);assert.ok(n,spec.node);assert.equal(n.illustration,spec.id);assert.ok(n.frames.length>=8,spec.node);assert.ok(data.assets[spec.id],spec.id);}
+ s.flags.yarikStayed=true;const n=buildFlow(s).find(n=>n.id==='7.05');assert.ok(!n.frames.some(f=>f.text.includes('Я слышал вас и ушёл')));assert.ok(n.frames.some(f=>f.text.includes('Я остался с эвакуацией')));
 });

@@ -1,3 +1,5 @@
+import { moreIllustration, moreFrames } from './more-art.js';
+import { realmArt, realmEndingArt } from './gm-realms.js';
 import { extendEpisodeFrames } from './episode-art-2.js';
 import { episodeIllustration } from './episode-art.js';
 // Связующие сцены: факты известны игроку только к соответствующему эпизоду.
@@ -176,6 +178,9 @@ const INVESTIGATIONS = {
 };
 // Полноэкранные сюжетные рисунки остаются под живым текстом игры.
 export function sceneIllustration(n,s){
+ if(n.illustration)return n.illustration;
+ const more=moreIllustration(n);if(more)return more;
+ const realm=realmArt(n);if(realm)return realm;
  const episode=episodeIllustration(n,s);if(episode)return episode;
  if(n.id==='4.07'||n.id==='4.collapse')return '09-коля-макс-обрушение';
  if(n.id==='4.departure'&&!s.flags.yarikStayed)return '10-ярик-уходит-с-ваней';
@@ -186,6 +191,7 @@ export function sceneIllustration(n,s){
  return null;
 }
 export function endingIllustration(s){
+ const realm=realmEndingArt(s);if(realm)return realm;
  if(s.flags.ending==='E1')return '12-финал-жертва-лида';
  if(s.flags.ending==='E2'&&s.hero==='maks'&&s.partner==='sasha')return '13-финал-макс-саша-петля';
  if(s.flags.ending==='E3'&&s.hero==='yarik'&&(s.partner||s.friend)==='vanya')return '14-финал-ярик-память';
@@ -197,7 +203,7 @@ export function paceFlow(flow,s){
  for(const n of flow){
   if(n.id==='cg.07-коля-опоссум'){opossumCG=n;continue;}
   if(n.kind==='chapter'){out.push({...n,bg:flow.slice(flow.indexOf(n)+1).find(x=>x.chapter===n.chapter&&x.bg)?.bg||n.bg});currentScene=null;continue;}
-  let info=scenes[n.id];
+  let info=n.realmStage?null:scenes[n.id];
   if(n.id==='2.private-scene1'||n.id==='2.private-scene2'){
    const p=PRIVATE[s.flags[n.id.endsWith('1')?'private1':'private2']|| (n.id.endsWith('1')?'lida':'katya')];
    info=C('До выезда на аукцион',`Наедине · ${p[0]}`,'Поговорить без остальных.',p[2]);
@@ -214,7 +220,7 @@ export function paceFlow(flow,s){
   }
   if(n.id==='3.01'&&opossumCG)out.push(opossumCG);
   const arrival=out.findLast(x=>x.kind==='scene');
-  out.push({...n,frames:extendEpisodeFrames(n,s),illustration:sceneIllustration(n,s),sceneKey:currentScene||n.id,place:LOCATIONS[n.bg]||arrival?.place||'',sceneTitle:arrival?.title||''});
+  out.push({...n,frames:moreFrames({...n,frames:extendEpisodeFrames(n,s)},s),illustration:sceneIllustration(n,s),sceneKey:currentScene||n.id,place:n.place||LOCATIONS[n.bg]||arrival?.place||'',sceneTitle:n.sceneTitle||arrival?.title||''});
   if(n.id==='E1.last'&&s.partner!=='lida')out.push({id:'E1.lida',chapter:7,bg:'24-запечатанная-стена',illustration:'12-финал-жертва-лида',sceneKey:'E1.lida',place:'У закрытой двери · год спустя',sceneTitle:'Не все прощания произносят вслух',frames:[
    {speaker:'',text:'В один из дождливых дней сюда приходит Лида. Щит остаётся на ступенях. Она прикладывает ладонь к камню, будто впервые не знает, как потребовать от двери ответа.'},
    {speaker:'',text:'Два стаканчика кофе медленно остывают. Город продолжает жить. Лида сидит здесь до темноты.'},

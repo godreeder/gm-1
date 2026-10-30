@@ -1,3 +1,4 @@
+import { soloLife, soloYears, pairLife, realmForState } from './gm-realms.js';
 import { paceFlow } from './pacing.js';
 export const VERSION = 1;
 export const HEROES = ['kolya', 'maks', 'vanya', 'yarik'];
@@ -71,7 +72,7 @@ export function validateState(value) {
   s.clues=[...new Set((Array.isArray(value.clues)?value.clues:[]).filter(x=>CLUES[x]))];
   for(const key of ['partner','interest']) s[key]=canRomance(s.hero,value[key])?value[key]:null;
   s.friend=CHARACTERS[value.friend]&&value.friend!==s.hero?value.friend:s.friend;
-  s.visited=Array.isArray(value.visited)?value.visited.filter(x=>typeof x==='string'&&x.length<100).slice(-250):[];
+  s.visited=Array.isArray(value.visited)?value.visited.filter(x=>typeof x==='string'&&x.length<100).slice(-500):[];
   s.history=Array.isArray(value.history)?value.history.filter(x=>x&&typeof x.text==='string'&&typeof x.name==='string').map(x=>({name:x.name.slice(0,60),text:x.text.slice(0,1600)})).slice(-80):[];
   s.updatedAt=Number(value.updatedAt)||0;s.complete=Boolean(value.complete);
   return s;
@@ -156,7 +157,7 @@ export function buildFlow(s) {
   const note=(id,text,opts={})=>add(id,[narration(text)],opts);
   const start=n=>{chapter=n;add(`chapter-${n}`,[],{kind:'chapter',title:CHAPTERS[n][0],subtitle:CHAPTERS[n][1]});};
   const reaction=(id,entries)=>add(`${id}.reaction`,entries);
-  const cg=(id,condition=true)=>{if(condition)add(`cg.${id}`,[],{kind:'cg',art:id});};
+  const cg=(id,condition=true)=>{if(condition){const raw=DATA.cgSections[id.slice(0,2)]?.raw||'';const dialogue=parse(raw.split('\n').filter(line=>! /^(Место|Выбор|Текст|ВЫБОР):/.test(line)).join('\n'));add(`cg.${id}`,dialogue,{illustration:id,title:DATA.cgSections[id.slice(0,2)]?.title});}};
   start(1);
   bg=s.hero==='kolya'?'27-лифт':s.hero==='maks'?'02-лестница-башни':'04-служебный-коридор';
   const names={kolya:'Коля',maks:'Макс',vanya:'Ваня',yarik:'Ярик'};
@@ -254,7 +255,7 @@ export function buildFlow(s) {
   ]);
   if(s.interest)add('3.personal',personal(s,0),{bg:'20-крыша'});
   else add('3.personal',read(s.hero==='maks'?'F03':'F01',{before:'[Перед финалом.]'}),{bg:'20-крыша'});
-  cg('02-коля-лида',romanceId(s.hero,s.interest)==='R01');
+
   scene('3.09',{bg:'12-вокзал-целый',frames:read('3.09',{after:'[Индивидуальная сцена',before:'[Ваня отправляет'})});
   start(4);scene('4.01',{bg:'12-вокзал-целый'});scene('4.02',{head:true});
   choose('4.fight','Два союза начали бой. Кому помочь?',[
@@ -278,7 +279,7 @@ export function buildFlow(s) {
       ]);
       add('4.consent',[frame(displayName(s.partner||s.interest,4),F.kiss?'Да. Я хочу.': 'Хорошо. Побудь рядом ещё немного.')]);
       const r=romanceId(s.hero,s.partner);
-      cg('01-ваня-ярик',r==='R23');cg('03-макс-саша',r==='R10');
+      cg('01-ваня-ярик',r==='R23');cg('02-коля-лида',r==='R01');cg('03-макс-саша',r==='R10');
     }else add('4.personal',[frame(displayName(s.interest,4),F.romance==='friend'?'Спасибо за прямой ответ. Мне нужно немного времени, но я не собираюсь исчезать.':'Хорошо. Не будем считать это обещанием. Когда будем готовы — поговорим.')]);
   }else note('4.personal','Вы договариваетесь искать друг друга, если связь пропадёт. Без признаний — просто обещание не оставить человека одного.');
   scene('4.04',{bg:'12-вокзал-целый',before:'[Если герой знал'});
@@ -366,7 +367,17 @@ export function buildFlow(s) {
   note('6.return',F.exit==='alone'?'Один выходит первым. Когда оборачивается, вместо второго видит закрывающийся проход.': 'Они выходят вдвоём. На этот раз Макс возвращается за Колей. Оба живы, хотя ещё не умеют говорить об этом без шуток.',{bg:'11-пункт-помощи'});
   scene('6.09',{enter:{clues:['ring']}});
   start(7);scene('7.01',{bg:'15-дверь-гм'});scene('7.02',{bg:'25-пульт-гм'});cg('06-илья-будущий-ярик');
-  scene('7.03');scene('7.04',{bg:'19-архив-гм',before:'[Игра показывает'});
+  scene('7.03');
+  if(s.hero==='maks'&&s.partner==='sasha')add('7.false-home',[
+    narration('Будущий Ярик поворачивает один из экранов. На нём — утро в квартире, которого у Макса и Саши ещё никогда не было. Изображение повторяет движение занавески с одинаковой точностью.'),
+    frame('Саша','Это ты придумал или он вытащил у тебя из головы?'),
+    frame('Макс','Я бы хотя бы цветок не забыл полить.'),
+    frame('Будущий Ярик','Достаточно согласиться. Всё остальное можно настроить.'),
+    frame('Саша','Включая то, захотим ли мы уйти?'),
+    frame('Макс','Сначала отвечай на вопросы. Квартиру пока не бронируем.'),
+    narration('Экран продолжает показывать утро. Они всё ещё стоят перед пультом; ни один из возможных финалов пока не наступил.'),
+  ],{illustration:'13-финал-макс-саша-петля',bg:'25-пульт-гм',title:'Дом, который предлагают вместо ответа'});
+  scene('7.04',{bg:'19-архив-гм',before:'[Игра показывает'});
   if(!F.transparent)choose('7.reveal','У Кати всё ещё нет признания Лиды. Передать запись сейчас?',[
     option('Да. Больше никаких вырезанных страниц',{flags:{transparent:true}}),
     option('Сохранить прежнее решение',{flags:{transparent:false}}),
@@ -395,10 +406,12 @@ export function buildFlow(s) {
     const end=F.ending;
     if(end==='E1'){
       scene('E1',{bg:'15-дверь-гм',frames:[...read('E1',{before:'[Если оставлен пленник'}),...read('E1',{after:'[Дверь сужается.]',before:'[Год спустя.'})]});
+      f.push(...soloLife(s));
       add('E1.last',read('E1',{after:'[Год спустя.'}),{bg:'24-запечатанная-стена'});
+      f.push(...soloYears(s));
     }else if(end==='E2'){
       add('E2.consent',[frame(displayName(s.partner,7),'Это мой выбор. Я хочу уйти с тобой. Но не говори потом, что мы не понимали, кого оставляем.')],{bg:'15-дверь-гм'});
-      scene('E2',{bg:'22-квартира-эпилог',frames:read('E2',{after:'[При согласии — утро в квартире.]'})});
+      f.push(...pairLife(s));
     }else if(end==='E3')scene('E3',{bg:'25-пульт-гм'});
     else if(end==='E4'){
       scene('E4',{bg:'26-финальный-разлом',before:'[Годы спустя.'});
@@ -417,7 +430,7 @@ export function buildFlow(s) {
       if(!s.partner)add('E5.chat',read('X04'),{bg:'22-квартира-эпилог'});
       note('E5.last','Сегодня можно было никуда не спешить.',{bg:'21-кафе'});
     }
-    add('finish',[],{kind:'finish',ending:end,title:DATA.sections[end]?.title});
+    add('finish',[],{kind:'finish',ending:end,title:realmForState(s)?.title||DATA.sections[end]?.title});
   }
   return paceFlow(f,s);
 }
